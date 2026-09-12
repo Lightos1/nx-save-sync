@@ -8,7 +8,7 @@ Result GetAccountUid(const char *accountName, AccountUid &outUid) {
 
     R_TRY(accountInitialize(AccountServiceType_Application));
 
-    TRY(accountListAllUsers(uids, ACC_USER_LIST_SIZE, &count));
+    R_TRY(accountListAllUsers(uids, ACC_USER_LIST_SIZE, &count));
 
     for (s32 i = 0; i < count; i++) {
         AccountProfile profile;
