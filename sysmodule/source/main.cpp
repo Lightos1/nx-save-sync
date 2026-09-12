@@ -5,7 +5,8 @@
 
 #include "ipc/ipc.hpp"
 
-#define INNER_HEAP_SIZE 0x2000
+/* Rip. */
+#define INNER_HEAP_SIZE 0x100000
 
 extern "C" {
 
