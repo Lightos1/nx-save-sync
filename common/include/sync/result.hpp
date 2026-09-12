@@ -4,8 +4,9 @@
 constexpr u32 SysSyncModule = 0x359;
 
 enum SysSyncResult {
-    Result_AccountNotFound  = 0,
-    Result_ConnectionFailed = 0,
+    Result_AccountNotFound = 0,
+    Result_ConnectionFailed,
+    Result_SynchronizationFailed,
 };
 
 #define SYNC_RC(x) MAKERESULT(SysSyncModule, x)

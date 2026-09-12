@@ -23,6 +23,13 @@ namespace fs {
 
         std::mutex logMutex{};
 
+        struct SyncReport {
+            std::string path;
+            Result failureType;
+        };
+
+        std::vector<SyncReport> syncReports{};
+
         Result MountSaveFile(AccountUid &account, u64 programId, FsFileSystem &outFs, std::string &outPath) {
             const FsSaveDataAttribute saveAttribute = {
                 .application_id = programId,
@@ -57,10 +64,14 @@ namespace fs {
         }
 
         void Synchronize(u64 ts, const std::string &path) {
-            if (SynchronizeSaves(socket, ts, path, path)) {
-                /* todo */
+            if (!SynchronizeSaves(socket, ts, path, path)) {
+                SyncReport report = {
+                    .path        = path,
+                    .failureType = SYNC_RC(Result_SynchronizationFailed),
+                };
+
+                syncReports.push_back(report);
             }
-            /* todo */
         }
 
         void IterateRecursively(FsFileSystem &fs, const std::string &mountedDir, const std::string &internalDir) {
@@ -99,11 +110,21 @@ namespace fs {
                 Synchronize(ts, internalPath);
             }
         }
+
+        void IterateReports() {
+            syncReports.shrink_to_fit();
+
+            for (const auto &report : syncReports) {
+                Log("%s: %d\n", report.path, R_DESCRIPTION(report.failureType));
+            }
+        }
     }
 
     Result IterateSavefile(AccountUid &account, u64 programId) {
         FsFileSystem saveFileSystem{};
         std::string path;
+        syncReports.reserve(100);
+        syncReports.clear();
 
         R_TRY(MountSaveFile(account, programId, saveFileSystem, path));
         socket = tcp::EstablishConnection();
@@ -114,6 +135,7 @@ namespace fs {
         R_UNLESS(socket >= 0, SYNC_RC(Result_ConnectionFailed));
 
         IterateRecursively(saveFileSystem, path, "");
+        IterateReports();
 
         R_SUCCEED();
     }
