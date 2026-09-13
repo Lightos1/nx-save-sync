@@ -4,3 +4,4 @@
 #include "sync/result.hpp"
 #include "sync/account.hpp"
 #include "sync/scope_exit.hpp"
+#include "sync/config.hpp"

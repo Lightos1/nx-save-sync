@@ -1,15 +1,22 @@
 #include <sync.hpp>
 #include <switch.h>
 #include <string>
+#include <sync.hpp>
 
 namespace tcp {
 
     int EstablishConnection() {
-        std::string peerIP = "192.168.0.50";
-        u16 peerPort       = 9000;
-        u16 listenPort     = 9000;
+        char ip[32];
+        if (!GetConfigValueStr(ConfigValue_PeerIp, ip, sizeof(ip), "0.0.0.0")) {
+            return -1; /* todo return result. */
+        }
 
-        int socket = ConnectOrListen(peerIP, peerPort, listenPort);
+        std::string peerIp(ip);
+
+        u16 peerPort       = GetConfigValue(ConfigValue_PeerPort);
+        u16 listenPort     = GetConfigValue(ConfigValue_ListenPort);
+
+        int socket = ConnectOrListen(peerIp, peerPort, listenPort);
 
         if (socket < 0) {
             return -1;

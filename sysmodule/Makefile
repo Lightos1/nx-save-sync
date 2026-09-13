@@ -125,7 +125,7 @@ endif
 all: $(BUILD)
 
 libs:
-	@$(foreach lib,$(LIBNAMES),$(MAKE) --no-print-directory -C $(TOPDIR)/libs/$(lib) && ) true
+	@$(foreach lib,$(LIBNAMES),$(MAKE) --no-print-directory -C $(TOPDIR)/../common/libs/$(lib) && ) true
 
 $(BUILD): libs
 	@[ -d $@ ] || mkdir -p $@
@@ -133,7 +133,7 @@ $(BUILD): libs
 
 clean:
 	@echo clean ...
-	@$(foreach lib,$(LIBNAMES),$(MAKE) -C $(TOPDIR)/libs/$(lib) clean && ) true
+	@$(foreach lib,$(LIBNAMES),$(MAKE) -C $(TOPDIR)/../common/libs/$(lib) clean && ) true
 ifeq ($(strip $(APP_JSON)),)
 	@rm -fr $(BUILD) $(TARGET).nro $(TARGET).nacp $(TARGET).elf
 else
@@ -145,7 +145,7 @@ else
 #---------------------------------------------------------------------------------
 .PHONY: all
 
-LIBFILES	:= $(foreach lib,$(LIBNAMES),$(TOPDIR)/libs/$(lib)/lib/lib$(lib).a)
+LIBFILES	:= $(foreach lib,$(LIBNAMES),$(TOPDIR)/../common/libs/$(lib)/lib/lib$(lib).a)
 DEPENDS		:=	$(OFILES:.o=.d)
 
 #---------------------------------------------------------------------------------
