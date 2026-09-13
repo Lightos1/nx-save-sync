@@ -20,7 +20,7 @@ SSOURCES	:=	$(call rwildcard,source/,*.s)
 SOURCES		:=	$(sort $(dir $(CSOURCES) $(CPPSOURCES) $(SSOURCES)))
 DATA		:=	data
 INCLUDES	:=	../common/include
-#LIBNAMES	:=
+LIBNAMES	:= minIni
 #ROMFS		:=	romfs
 
 #---------------------------------------------------------------------------------
@@ -45,7 +45,7 @@ LIBS	:= $(foreach lib,$(LIBNAMES),-l$(lib)) -lnx
 # list of directories containing libraries, this must be the top level containing
 # include and lib
 #---------------------------------------------------------------------------------
-LIBDIRS	:= $(PORTLIBS) $(LIBNX) $(foreach lib,$(LIBNAMES),$(TOPDIR)/libs/$(lib))
+LIBDIRS	:= $(PORTLIBS) $(LIBNX) $(foreach lib,$(LIBNAMES),$(TOPDIR)/../common/libs/$(lib))
 
 #---------------------------------------------------------------------------------
 # no real need to edit anything past this point unless you need to add additional
