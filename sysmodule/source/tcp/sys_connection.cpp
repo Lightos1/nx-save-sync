@@ -5,24 +5,24 @@
 
 namespace tcp {
 
-    int EstablishConnection() {
+    Result EstablishConnection(int &socket) {
         char ip[32];
         if (!GetConfigValueStr(ConfigValue_PeerIp, ip, sizeof(ip), "0.0.0.0")) {
-            return -1; /* todo return result. */
+            return SYNC_RC(Result_ConfigNotFound);
         }
 
         std::string peerIp(ip);
 
-        u16 peerPort       = GetConfigValue(ConfigValue_PeerPort);
-        u16 listenPort     = GetConfigValue(ConfigValue_ListenPort);
+        u16 peerPort   = GetConfigValue(ConfigValue_PeerPort);
+        u16 listenPort = GetConfigValue(ConfigValue_ListenPort);
 
-        int socket = ConnectOrListen(peerIp, peerPort, listenPort);
+        socket = ConnectOrListen(peerIp, peerPort, listenPort);
 
         if (socket < 0) {
-            return -1;
+            return SYNC_RC(Result_InvalidSocket);
         }
 
-        return socket;
+        R_SUCCEED();
     }
 
 }

@@ -127,12 +127,11 @@ namespace fs {
         syncReports.clear();
 
         R_TRY(MountSaveFile(account, programId, saveFileSystem, path));
-        socket = tcp::EstablishConnection();
-
-        ON_SCOPE_EXIT { close(socket); };
         ON_SCOPE_EXIT { fsdevUnmountDevice(BackupMount); };
 
-        R_UNLESS(socket >= 0, SYNC_RC(Result_ConnectionFailed));
+        int socket = 0;
+        R_TRY(tcp::EstablishConnection(socket));
+        ON_SCOPE_EXIT { close(socket); };
 
         IterateRecursively(saveFileSystem, path, "");
         IterateReports();

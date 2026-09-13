@@ -2,6 +2,6 @@
 
 namespace tcp {
 
-    int EstablishConnection();
+    Result EstablishConnection(int &socket);
 
 }
