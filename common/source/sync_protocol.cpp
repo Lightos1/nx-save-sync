@@ -1,16 +1,14 @@
-#include <sync/sync_protocol.hpp>
+#include <sync.hpp>
 
 #include <cstdint>
 #include <cstring>
 #include <fstream>
 #include <algorithm>
 
-#if !defined(__SWITCH__)
-    #include <sys/socket.h>
-    #include <netinet/in.h>
-    #include <arpa/inet.h>
-    #include <unistd.h>
-#endif
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 
 namespace {
     bool SendAll(int socket, const void *data, size_t length) {
@@ -27,6 +25,28 @@ namespace {
         }
 
         return true;
+    }
+
+    static std::string MakeZipFilePath(const std::string &outPath, const u64 programId) {
+        std::string zipFilePath = outPath;
+        if (!zipFilePath.empty() && zipFilePath.back() != '/') {
+            zipFilePath += '/';
+        }
+
+        char buf[17];
+        std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(programId));
+        zipFilePath += buf;
+        zipFilePath += ".zip";
+        return zipFilePath;
+    }
+
+    static std::string GetFileNameFromPath(const std::string &path) {
+        size_t nameStart = path.find_last_of("/\\");
+        if (nameStart == std::string::npos) {
+            return path;
+        }
+
+        return path.substr(nameStart + 1);
     }
 
     bool ReceiveAll(int socket, void *data, size_t length) {
@@ -78,7 +98,7 @@ bool ReceiveMessage(int socket, MsgType &type, std::vector<u8> &payload) {
     return true;
 }
 
-static bool ExchangeDate(int socket, u64 myTs, uint64_t &peerTs) {
+bool ExchangeDate(int socket, u64 myTs, u64 &peerTs) {
     if (!SendMessage(socket, MsgDate, &myTs, sizeof(myTs))) {
         return false;
     }
@@ -103,19 +123,23 @@ static bool SendFile(int socket, const std::string &path) {
     u64 size = stream.tellg();
     stream.seekg(0);
 
-    std::vector<uint8_t> meta(sizeof(size) + path.size());
+    std::string fileName = GetFileNameFromPath(path);
+
+    std::vector<uint8_t> meta(sizeof(size) + fileName.size());
     std::memcpy(meta.data(), &size, sizeof(size));
-    std::memcpy(meta.data() + sizeof(size), path.data(), path.size());
+    std::memcpy(meta.data() + sizeof(size), fileName.data(), fileName.size());
     if (!SendMessage(socket, MsgFileMeta, meta.data(), meta.size())) {
         return false;
     }
+
+    fs::Log("Send Message");
 
     std::vector<u8> buf(32 * 1024);
     u64 remaining = size;
 
     while (remaining > 0) {
         size_t chunk = std::min<u64>(buf.size(), remaining);
-        stream.read(buf.data(), chunk);
+        stream.read(reinterpret_cast<char *>(buf.data()), chunk);
 
         if (!SendMessage(socket, MsgFileChunk, buf.data(), chunk)) {
             return false;
@@ -123,6 +147,8 @@ static bool SendFile(int socket, const std::string &path) {
 
         remaining -= chunk;
     }
+
+    fs::Log("Finished writing");
 
     /* We're done. */
     return SendMessage(socket, MsgDone, nullptr, 0);
@@ -160,23 +186,40 @@ static bool ReceiveFile(int socket, const std::string &outDir) {
     return ReceiveMessage(socket, type, payload) && type == MsgDone;
 }
 
-bool SynchronizeSaves(int socket, u64 myTs, const std::string &savePath, const std::string &outDir) {
-    u64 peerTs = 0;
+Result SynchronizeSaves(int socket, u64 myTs, const std::string &savePath, const std::string &outPath, const u64 programId) {
 
+    if (!SendMessage(socket, MsgProgramId, &programId, sizeof(programId))) {
+        return SYNC_RC(Result_ProgramIdExchangeFailed);
+    }
+
+    u64 peerTs = 0;
     if (!ExchangeDate(socket, myTs, peerTs)) {
-        return false;
+        return SYNC_RC(Result_TsExchangeFailed);
     }
 
     if (myTs > peerTs) {
-        return SendFile(socket, savePath);
+        std::string zipFilePath = MakeZipFilePath(outPath, programId);
+        if (fs::PackageZip(savePath.c_str(), zipFilePath.c_str()) != 0) {
+            return SYNC_RC(Result_ZippingFileFailed);
+        }
+
+        if (SendFile(socket, zipFilePath)) {
+            R_SUCCEED();
+        }
+
+        return SYNC_RC(Result_SendFileFailed);
     }
 
     if (myTs < peerTs) {
-        return ReceiveFile(socket, outDir);
+        if (ReceiveFile(socket, outPath)) {
+            R_SUCCEED();
+        }
+
+        return SYNC_RC(Result_ReceiveFileFailed);
     }
 
     /* The dates match, there is nothing to do. */
-    return true;
+    R_SUCCEED();
 }
 
 int ConnectOrListen(const std::string &peerIp, u16 peerPort, u16 listenPort) {

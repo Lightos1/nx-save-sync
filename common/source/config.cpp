@@ -1,14 +1,21 @@
 #include <sync/config.hpp>
 #include <minIni.h>
 #include <cstring>
+#include <cstdio>
+#include <sys/stat.h>
+#include <unistd.h>
 
 static constexpr const char *InvalidConfigName = "err";
 
 const char *GetConfigName(ConfigValue value) {
     switch (value) {
-        case ConfigValue_PeerIp: return "peer_ip";
-        case ConfigValue_PeerPort: return "peer_port";
-        case ConfigValue_ListenPort: return "listen_port";
+        case ConfigValue_PeerIp:                    return "peer_ip";
+        case ConfigValue_PeerPort:                  return "peer_port";
+        case ConfigValue_ListenPort:                return "listen_port";
+        case ConfigValue_SyncIntervalMin:           return "sync_interval_min";
+        case ConfigValue_ProcessRefreshIntervalSec: return "proces_refresh_interval_sec";
+        case ConfigValue_AccountName:               return "account_name";
+        case ConfigValue_ZipPath:                   return "zip_path";
         default:
             return InvalidConfigName;
     }
@@ -18,24 +25,29 @@ static constexpr u64 ConfigValueNotFound = ~0;
 
 static u64 GetDefaultValue(ConfigValue value) {
     switch (value) {
-        case ConfigValue_PeerPort: return 9000;
-        case ConfigValue_ListenPort: return 9000;
+        case ConfigValue_PeerPort:                  return 9000;
+        case ConfigValue_ListenPort:                return 9000;
+        case ConfigValue_SyncIntervalMin:           return 10;
+        case ConfigValue_ProcessRefreshIntervalSec: return 5;
         default:
             return ConfigValueNotFound;
     }
 }
 
-static bool BeginConfigWrite() {
+void EnsureConfigDir() {
     if (access(ConfigPath, F_OK) == -1) {
-        CreateDir(ConfigPath);
+        mkdir(ConfigPath, 0777);
     }
+}
+
+static bool BeginConfigWrite() {
+    EnsureConfigDir();
     remove(ConfigFileTmp);
 
     FILE *src = fopen(ConfigFile, "rb");
     if (src == NULL) {
         return true;
     }
-
 
     FILE *dst = fopen(ConfigFileTmp, "wb");
     if (dst == NULL) {
@@ -78,7 +90,7 @@ static bool CommitConfigWrite(void) {
 static constexpr const char *SectionName  = "settings";
 
 static bool IsInvalidConfigName(const char *configName) {
-    return strncmp(configName, InvalidConfigName) != 0;
+    return strcmp(configName, InvalidConfigName) == 0;
 }
 
 bool SetConfigValue(ConfigValue configValue, u64 value) {
@@ -91,7 +103,7 @@ bool SetConfigValue(ConfigValue configValue, u64 value) {
         return false;
     }
 
-    if (!init_putl(SectionName, name, value, ConfigFileTmp)) {
+    if (!ini_putl(SectionName, name, value, ConfigFileTmp)) {
         return false;
     }
 
@@ -106,12 +118,12 @@ u64 GetConfigValue(ConfigValue configValue) {
         return defaultValue;
     }
 
-    value = ini_getl(SectionName, name, defaultValue, ConfigFile);
+    u64 value = ini_getl(SectionName, name, defaultValue, ConfigFile);
 
     return value;
 }
 
-bool SetConfigValueStr(ConfigValue valu, const char *str) {
+bool SetConfigValueStr(ConfigValue value, const char *str) {
     if (!BeginConfigWrite()) {
         return false;
     }

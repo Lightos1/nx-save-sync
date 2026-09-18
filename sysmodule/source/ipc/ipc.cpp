@@ -1,5 +1,6 @@
 #include <switch.h>
 #include <mutex>
+#include <sync.hpp>
 
 #include "ipc_server.h"
 #include "../fs/fs.hpp"

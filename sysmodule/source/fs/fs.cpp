@@ -6,9 +6,7 @@
 #include <sys/stat.h>
 #include <cstdio>
 #include <cstring>
-#include <mutex>
 #include <fstream>
-#include <cstdarg>
 
 #include "../tcp/sys_connection.hpp"
 #include "fs.hpp"
@@ -16,148 +14,70 @@
 namespace fs {
 
     namespace {
-
         constexpr const char *BackupMount = "save";
-
-        int socket = 0;
-
-        std::mutex logMutex{};
-
-        struct SyncReport {
-            std::string path;
-            Result failureType;
-        };
-
-        std::vector<SyncReport> syncReports{};
-
-        Result MountSaveFile(AccountUid &account, u64 programId, FsFileSystem &outFs, std::string &outPath) {
-            const FsSaveDataAttribute saveAttribute = {
-                .application_id = programId,
-                .uid            = account,
-                .save_data_type = FsSaveDataType_Account,
-                .save_data_rank = FsSaveDataRank_Primary,
-            };
-
-            R_TRY(fsOpenSaveDataFileSystem(&outFs, FsSaveDataSpaceId_User, &saveAttribute));
-
-            Result rc = fsdevMountDevice(BackupMount, outFs);
-            if (R_FAILED(rc)) {
-                fsFsClose(&outFs);
-                return rc;
-            }
-
-            outPath = BackupMount;
-            outPath += ":/";
-
-            R_SUCCEED();
-        }
-
-        u64 GetTimeStamp(FsFileSystem &fs, const std::string &internalPath) {
-            FsTimeStampRaw ts{};
-            Result rc = fsFsGetFileTimeStampRaw(&fs, internalPath.c_str(), &ts);
-
-            if (R_FAILED(rc) || !ts.is_valid) {
-                return 0;
-            }
-
-            return ts.modified;
-        }
-
-        void Synchronize(u64 ts, const std::string &path) {
-            if (!SynchronizeSaves(socket, ts, path, path)) {
-                SyncReport report = {
-                    .path        = path,
-                    .failureType = SYNC_RC(Result_SynchronizationFailed),
-                };
-
-                syncReports.push_back(report);
-            }
-        }
-
-        void IterateRecursively(FsFileSystem &fs, const std::string &mountedDir, const std::string &internalDir) {
-            DIR *dir = opendir(mountedDir.c_str());
-
-            if (!dir) {
-                return;
-            }
-
-            ON_SCOPE_EXIT { closedir(dir); };
-
-            dirent *entry{};
-            while ((entry = readdir(dir)) != nullptr) {
-                if (std::strcmp(entry->d_name, ".") == 0 || std::strcmp(entry->d_name, "..") == 0) {
-                    continue;
-                }
-
-                const std::string mountedPath  = mountedDir + "/" + entry->d_name;
-                const std::string internalPath = internalDir + "/" + entry->d_name;
-
-                struct stat st{};
-                if (stat(mountedPath.c_str(), &st) != 0) {
-                    continue;
-                }
-
-                if (S_ISDIR(st.st_mode)) {
-                    IterateRecursively(fs, mountedPath, internalPath);
-                    continue;
-                }
-
-                u64 ts = GetTimeStamp(fs, mountedPath);
-                if (!ts) {
-                    continue;
-                }
-
-                Synchronize(ts, internalPath);
-            }
-        }
-
-        void IterateReports() {
-            syncReports.shrink_to_fit();
-
-            for (const auto &report : syncReports) {
-                Log("%s: %d\n", report.path, R_DESCRIPTION(report.failureType));
-            }
-        }
     }
 
-    Result IterateSavefile(AccountUid &account, u64 programId) {
-        FsFileSystem saveFileSystem{};
-        std::string path;
-        syncReports.reserve(100);
-        syncReports.clear();
+    Result MountSaveFile(AccountUid &account, u64 programId, FsFileSystem &outFs, std::string &outPath) {
+        const FsSaveDataAttribute saveAttribute = {
+            .application_id = programId,
+            .uid            = account,
+            .save_data_type = FsSaveDataType_Account,
+            .save_data_rank = FsSaveDataRank_Primary,
+        };
 
-        R_TRY(MountSaveFile(account, programId, saveFileSystem, path));
-        ON_SCOPE_EXIT { fsdevUnmountDevice(BackupMount); };
+        R_TRY(fsOpenSaveDataFileSystem(&outFs, FsSaveDataSpaceId_User, &saveAttribute));
 
-        int socket = 0;
-        R_TRY(tcp::EstablishConnection(socket));
-        ON_SCOPE_EXIT { close(socket); };
+        int rc = fsdevMountDevice(BackupMount, outFs);
 
-        IterateRecursively(saveFileSystem, path, "");
-        IterateReports();
+        if (rc == -1) {
+            /* todo proper result */
+            return MAKERESULT(Module_Libnx, LibnxError_NotFound);
+        }
+
+        outPath = BackupMount;
+        outPath += ":/";
 
         R_SUCCEED();
     }
 
-    void Log(const char *fmt, ...) {
-        std::scoped_lock lock{logMutex};
+    Result GetSaveDataArchiveTimestamp(AccountUid &account, u64 programId, u64 &outTimestamp) {
+        FsSaveDataInfoReader reader{};
+        R_TRY(fsOpenSaveDataInfoReader(&reader, FsSaveDataSpaceId_User));
+        ON_SCOPE_EXIT { fsSaveDataInfoReaderClose(&reader); };
 
-        va_list args;
-        va_start(args, fmt);
-        FILE *file = fopen(FileLogPath, "a");
+        FsSaveDataInfo info{};
+        s64 total = 0;
+        u64 saveDataId = 0;
+        bool found = false;
 
-        if (file) {
-            timespec now;
-            clock_gettime(CLOCK_REALTIME, &now);
-            tm *nowTm = localtime(&now.tv_sec);
+        while (true) {
+            R_TRY(fsSaveDataInfoReaderRead(&reader, &info, 1, &total));
+            if (total == 0) {
+                break;
+            }
 
-            fprintf(file, "[%04d-%02d-%02d %02d:%02d:%02d.%03ld] ", nowTm->tm_year+1900, nowTm->tm_mon+1, nowTm->tm_mday, nowTm->tm_hour, nowTm->tm_min, nowTm->tm_sec, now.tv_nsec / 1000000UL);
-            vfprintf(file, fmt, args);
-            fprintf(file, "\n");
-            fclose(file);
+            if (info.save_data_type == FsSaveDataType_Account &&
+                info.application_id == programId &&
+                !memcmp(&info.uid, &account, sizeof(AccountUid))) {
+                saveDataId = info.save_data_id;
+                found = true;
+                break;
+            }
         }
 
-        va_end(args);
+        if (!found) {
+            return SYNC_RC(Result_ArchiveTimestampNotFound);
+        }
+
+        FsSaveDataExtraData extraData{};
+        R_TRY(fsReadSaveDataFileSystemExtraData(&extraData, sizeof(extraData), saveDataId));
+
+        outTimestamp = extraData.timestamp;
+        R_SUCCEED();
+    }
+
+    void UnmountSaveFile(FsFileSystem &fs) {
+        fsdevUnmountDevice(BackupMount);
     }
 
 }

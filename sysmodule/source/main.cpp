@@ -2,11 +2,14 @@
 #include <stdlib.h>
 
 #include <sync.hpp>
+#include <sync/config.hpp>
 
 #include "ipc/ipc.hpp"
+#include "pm/process_monitoring.hpp"
+#include "fs/fs.hpp"
 
 /* Rip. */
-#define INNER_HEAP_SIZE 0x100000
+#define INNER_HEAP_SIZE 0x1000000
 
 extern "C" {
 
@@ -68,12 +71,23 @@ extern "C" {
         fsExit();
         fsdevUnmountAll();
         socketExit();
+        pm::Exit();
     }
 }
 
 int main(int argc, char *argv[]) {
+    EnsureConfigDir();
+
     ipc::Initialize();
     ipc::SetRunning(true);
+
+    Result rc = pm::Initialize();
+    if (R_FAILED(rc)) {
+        fs::Log("Failed to initialize pm: %d", R_DESCRIPTION(rc));
+    }
+
+    pm::WaitForQLaunch();
+    pm::MonitorProcesses();
 
     while (true) {
         svcSleepThread(10'000'000);

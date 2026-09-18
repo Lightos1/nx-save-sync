@@ -15,16 +15,20 @@
     typedef int32_t s32;
     typedef uint64_t u64;
     typedef int64_t s64;
+
+    typedef u32 Result;
 #endif
 
 enum MsgType : u8 {
     MsgDate      = 1,
-    MsgFileMeta  = 2,
-    MsgFileChunk = 3,
-    MsgDone      = 4,
+    MsgProgramId = 2,
+    MsgFileMeta  = 3,
+    MsgFileChunk = 4,
+    MsgDone      = 5,
 };
 
 int ConnectOrListen(const std::string &peerIp, u16 peerPort, u16 listenPort);
-bool SynchronizeSaves(int socket, u64 myTs, const std::string &savePath, const std::string &outdir);
+Result SynchronizeSaves(int socket, u64 myTs, const std::string &savePath, const std::string &outPath, const u64 programId);
 bool SendMessage(int socket, MsgType type, const void *payload, u32 length);
 bool ReceiveMessage(int socket, MsgType &type, std::vector<u8> &payload);
+bool ExchangeDate(int socket, u64 myTs, u64 &peerTs);
