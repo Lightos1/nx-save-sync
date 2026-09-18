@@ -14,9 +14,9 @@ rwildcard = $(wildcard $1$2) $(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2
 #---------------------------------------------------------------------------------
 TARGET		:=	sys-sync
 BUILD		:=	build
-CSOURCES	:=	$(call rwildcard,source/,*.c)
-CPPSOURCES	:=	$(call rwildcard,source/,*.cpp)
-SSOURCES	:=	$(call rwildcard,source/,*.s)
+CSOURCES	:=	$(call rwildcard,source/,*.c) $(call rwildcard,../common/source/,*.c)
+CPPSOURCES	:=	$(call rwildcard,source/,*.cpp) $(call rwildcard,../common/source/,*.cpp)
+SSOURCES	:=	$(call rwildcard,source/,*.s) $(call rwildcard,../common/source/,*.s)
 SOURCES		:=	$(sort $(dir $(CSOURCES) $(CPPSOURCES) $(SSOURCES)))
 DATA		:=	data
 INCLUDES	:=	../common/include
